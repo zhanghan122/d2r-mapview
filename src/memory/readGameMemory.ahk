@@ -14,7 +14,10 @@ global lastdwEndSeedHash1
 global xorkey
 global playerLevel 
 global experience
+; P0: remembers the last pointer-chain failure so it is logged once per change.
+global lastReadAnchorState := ""
 readGameMemory(ByRef d2rprocess, ByRef settings, ByRef gameMemoryData) {
+    global lastReadAnchorState
     static items
     static objects
     static partyList
@@ -41,11 +44,45 @@ readGameMemory(ByRef d2rprocess, ByRef settings, ByRef gameMemoryData) {
 
     ; get the map seed
     , actAddress := d2rprocess.read(playerUnit + 0x20, "Int64")  
-    , actMiscAddress := d2rprocess.read(actAddress + 0x78, "Int64")   ;0x0000023a64ed4780 ;2449824630656
+    , actMiscAddress := d2rprocess.read(actAddress + 0x70, "Int64")   ; Current D2R layout stores pActMisc at Act+0x70.
+
+    ; P0: early-read sanity checks, logged only when the failure state changes.
+    anchorFail := ""
+    anchorValue := 0
+    if (playerUnit <= 0x10000) {
+        anchorFail := "playerUnit"
+        anchorValue := playerUnit
+    } else if (pPath <= 0x10000) {
+        anchorFail := "pPath"
+        anchorValue := pPath
+    } else if (actAddress <= 0x10000) {
+        anchorFail := "actAddress"
+        anchorValue := actAddress
+    } else if (actMiscAddress <= 0x10000) {
+        anchorFail := "actMiscAddress"
+        anchorValue := actMiscAddress
+    }
+    if (anchorFail != lastReadAnchorState) {
+        if (anchorFail != "") {
+            WriteLog("READ ANCHOR FAIL: " . anchorFail . " = 0x" . Format("{:X}", anchorValue + 0) . " (expected > 0x10000)")
+        } else if (lastReadAnchorState != "") {
+            WriteLog("READ ANCHOR OK: pointer chain restored")
+        }
+        lastReadAnchorState := anchorFail
+    }
+
+    if (anchorFail != "") {
+        ; P0 fail-closed: don't continue reading from a broken pointer chain.
+        ; Publish an empty frame so downstream consumers stay safe (for-in over
+        ; partyList, items.push); the main loop's render gate then logs "In Menu".
+        gameMemoryData := {"items": [], "partyList": []}
+        return
+    }
 
     dwInitSeedHash1 := d2rprocess.read(actMiscAddress + 0x840, "UInt") 
     dwInitSeedHash2 := d2rprocess.read(actMiscAddress + 0x844, "UInt") 
-    dwEndSeedHash1 := d2rprocess.read(actMiscAddress + 0x868, "UInt") 
+    ; Current D2R stores the end-seed hash at ActMisc+0x860.
+    dwEndSeedHash1 := d2rprocess.read(actMiscAddress + 0x860, "UInt")
 
     if (dwInitSeedHash1 != lastdwInitSeedHash1 or dwInitSeedHash2 != lastdwInitSeedHash2 or mapSeed == 0) {
         mapSeed := calculateMapSeed(dwInitSeedHash1, dwInitSeedHash2, dwEndSeedHash1)
@@ -56,7 +93,7 @@ readGameMemory(ByRef d2rprocess, ByRef settings, ByRef gameMemoryData) {
 
 
     ; get the difficulty
-    aActUnk2 := d2rprocess.read(actAddress + 0x78, "Int64")
+    aActUnk2 := d2rprocess.read(actAddress + 0x70, "Int64")
     , difficulty := d2rprocess.read(aActUnk2 + 0x830, "UShort")
     
     if (Mod(ticktock, 6)) {

@@ -2,6 +2,11 @@
 
 ReadParty(ByRef d2rprocess, ByRef partyList, ByRef playerUnitId) {
     partyList := []
+    ; Roster anchor optional: return the (empty) party list without dereferencing BaseAddress+0.
+    if (!offsets.HasKey("rosterOffset") || offsets["rosterOffset"] <= 0) {
+        WriteLogDebug("ReadParty skipped: roster unresolved")
+        return partyList
+    }
     SetFormat Integer, D
     rosterOffset := offsets["rosterOffset"]
     , baseAddress := d2rprocess.BaseAddress + rosterOffset

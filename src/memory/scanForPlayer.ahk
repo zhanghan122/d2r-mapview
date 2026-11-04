@@ -57,11 +57,25 @@ getPlayerOffset(ByRef d2r, startingOffset) {
             inventory := d2r.read(pInventory, "Int64")
             if (inventory) {
                 
-                expCharPtr := d2r.read(d2r.BaseAddress + expOffset, "Int64")
-                expChar := d2r.read(expCharPtr + 0x5C, "UShort")
-                basecheck := (d2r.read(inventory + 0x30, "UShort")) != 1
-                if (expChar) {
-                    basecheck := (d2r.read(inventory + 0x70, "UShort")) != 0
+                ; Never dereference BaseAddress+0 or expCharPtr+0x5C when the expansion anchor is unavailable.
+                if (offsets.HasKey("expOffset") && offsets["expOffset"] > 0) {
+                    ; Normal expansion-anchor behaviour, unchanged.
+                    expCharPtr := d2r.read(d2r.BaseAddress + expOffset, "Int64")
+                    if (expCharPtr > 0) {
+                        expChar := d2r.read(expCharPtr + 0x5C, "UShort")
+                    } else {
+                        expChar := 0
+                    }
+                    basecheck := (d2r.read(inventory + 0x30, "UShort")) != 1
+                    if (expChar) {
+                        basecheck := (d2r.read(inventory + 0x70, "UShort")) != 0
+                    }
+                } else {
+                    ; Offline compatibility fallback for missing-anchor builds (not a replacement anchor):
+                    ; verified two-state evidence - accept when either branch passes.
+                    baseBranch := (d2r.read(inventory + 0x30, "UShort")) != 1
+                    expansionBranch := (d2r.read(inventory + 0x70, "UShort")) != 0
+                    basecheck := (baseBranch or expansionBranch)
                 }
                 
                 if (basecheck) {
@@ -83,7 +97,8 @@ getPlayerOffset(ByRef d2r, startingOffset) {
                         name := name . Chr(d2r.read(playerNameAddress + (A_Index -1), "UChar"))
                     }
                     ;WriteLog(name " " xPos " " yPos " " mapSeed)
-                    if (xPos > 0 and yPos > 0 and StrLen(mapSeed) > 6) {
+                    ; Require a successfully read nonzero UInt32 seed; the stale decimal-length heuristic on mapSeed is removed.
+                    if (xPos > 0 and yPos > 0 and mapSeed != "" and (mapSeed + 0) > 0) {
                         WriteLog("SUCCESS: Found current player offset: " newOffset ", " xPos " " yPos " at entry " attempts ", which gives obfuscated map seed: " mapSeed)
                         
                         SetFormat Integer, D
