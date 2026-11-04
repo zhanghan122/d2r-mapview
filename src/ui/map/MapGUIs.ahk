@@ -96,6 +96,8 @@ class MapGUIs {
         renderScale := settings["serverScale"] 
         
         thisMap := this.mapImageList[levelNo]
+        ; true when the image was requested with isometric=true (pre-projected by the server)
+        isIso := this.mapImageList[levelNo].requestedIsometric
         Gdip_Startup()
         ; OutputDebug, % thisMap.sFile "`n"
         pBitmap := Gdip_CreateBitmapFromFile(this.mapImageList[levelNo].sFile)
@@ -118,7 +120,12 @@ class MapGUIs {
         obm := SelectObject(hdc, hbm)
         Gdip_SetSmoothingMode(G, 4) 
         G := Gdip_GraphicsFromHDC(hdc)
-        Gdip_DrawImage(G, pBitmap, 0, 0, mapScaledWidth, mapScaledHeight / 2, 0, 0, rotatedWidth, rotatedHeight, this.opacity)
+        if (isIso) {
+            ; pre-projected image is already rotated + y-squashed: draw at full height
+            Gdip_DrawImage(G, pBitmap, 0, 0, mapScaledWidth, mapScaledHeight, 0, 0, rotatedWidth, rotatedHeight, this.opacity)
+        } else {
+            Gdip_DrawImage(G, pBitmap, 0, 0, mapScaledWidth, mapScaledHeight / 2, 0, 0, rotatedWidth, rotatedHeight, this.opacity)
+        }
         ; pPen := Gdip_CreatePen(0x44ff0000, 5)
         ; Gdip_DrawRectangle(G, pPen, 0, 0, mapScaledWidth, mapScaledHeight/2)
         ; Gdip_DeletePen(pPen)
@@ -127,11 +134,25 @@ class MapGUIs {
         playerX := (gameMemoryData["xPos"] - this.mapImageList[levelNo].mapOffsetX) * renderScale
         playerY := (gameMemoryData["yPos"] - this.mapImageList[levelNo].mapOffsetY) * renderScale
         
-        ; correctedPos := transformPosition(playerX, playerY, originalWidth / 2, originalHeight / 2, mapScaledWidth, mapScaledHeight, 2)
-        correctedPos := findNewPos(playerX, playerY, (originalWidth/2), (originalHeight/2), mapScaledWidth, mapScaledHeight, this.scale)
+        if (isIso) {
+            ; pre-projected image: the player's position in the PNG comes from the exact closed form
+            ; (PROJECTION_PATCH_CHECKPOINT.md), not the legacy findNewPos transform
+            isoPos := this.isoPlayerPos(this.mapImageList[levelNo], gameMemoryData["xPos"] - this.mapImageList[levelNo].mapOffsetX, gameMemoryData["yPos"] - this.mapImageList[levelNo].mapOffsetY)
+            correctedPos := { x: isoPos.x * this.scale, y: isoPos.y * this.scale }
+        } else {
+            ; correctedPos := transformPosition(playerX, playerY, originalWidth / 2, originalHeight / 2, mapScaledWidth, mapScaledHeight, 2)
+            correctedPos := findNewPos(playerX, playerY, (originalWidth/2), (originalHeight/2), mapScaledWidth, mapScaledHeight, this.scale)
+        }
         gameWindow := getMapDrawingArea()
-        mapPosX := ((gameWindow.W / 2) - correctedPos.x + gameWindow.X) + this.offsetX
-        mapPosY := ((gameWindow.H / 2) - correctedPos.y + gameWindow.Y) + (mapScaledHeight / 4) - (5 * this.scale) + this.offsetY
+        if (isIso) {
+            ; anchor the window so the player's projected position lands on the dot layer's
+            ; player anchor point (gameWindow center, -10px y per World2Screen) — keeps image and dots aligned
+            mapPosX := ((gameWindow.W / 2) - correctedPos.x + gameWindow.X) + this.offsetX
+            mapPosY := ((gameWindow.H / 2) - 10 - correctedPos.y + gameWindow.Y) + this.offsetY
+        } else {
+            mapPosX := ((gameWindow.W / 2) - correctedPos.x + gameWindow.X) + this.offsetX
+            mapPosY := ((gameWindow.H / 2) - correctedPos.y + gameWindow.Y) + (mapScaledHeight / 4) - (5 * this.scale) + this.offsetY
+        }
         this.mapImageList[levelNo].mapPosX := mapPosX
         this.mapImageList[levelNo].mapPosY := mapPosY
         
@@ -221,19 +242,53 @@ class MapGUIs {
         ; calculate new position
         playerX := (gameMemoryData["xPos"] - this.mapImageList[levelNo].mapOffsetX) * renderScale
         playerY := (gameMemoryData["yPos"] - this.mapImageList[levelNo].mapOffsetY) * renderScale
-        correctedPos := findNewPos(playerX, playerY, (originalWidth/2), (originalHeight/2), mapScaledWidth, mapScaledHeight, this.scale)
-        ; correctedPos := transformPosition(playerX, playerY, originalWidth / 2, originalHeight / 2, mapScaledWidth, mapScaledHeight, this.scale)
-        
-        mapPosX := ((gameWindow.W / 2) - correctedPos.x + gameWindow.X) + this.offsetX
-        mapPosY := ((gameWindow.H / 2) - correctedPos.y + gameWindow.Y) + (mapScaledHeight / 4) - (5 * this.scale) + this.offsetY
+        isIso := this.mapImageList[levelNo].requestedIsometric
+        if (isIso) {
+            ; pre-projected image: exact closed form instead of the legacy findNewPos transform
+            isoPos := this.isoPlayerPos(this.mapImageList[levelNo], gameMemoryData["xPos"] - this.mapImageList[levelNo].mapOffsetX, gameMemoryData["yPos"] - this.mapImageList[levelNo].mapOffsetY)
+            correctedPos := { x: isoPos.x * this.scale, y: isoPos.y * this.scale }
+        } else {
+            correctedPos := findNewPos(playerX, playerY, (originalWidth/2), (originalHeight/2), mapScaledWidth, mapScaledHeight, this.scale)
+            ; correctedPos := transformPosition(playerX, playerY, originalWidth / 2, originalHeight / 2, mapScaledWidth, mapScaledHeight, this.scale)
+        }
+
+        if (isIso) {
+            ; same anchor as drawMap: dot layer's player anchor point (gameWindow center, -10px y per World2Screen)
+            mapPosX := ((gameWindow.W / 2) - correctedPos.x + gameWindow.X) + this.offsetX
+            mapPosY := ((gameWindow.H / 2) - 10 - correctedPos.y + gameWindow.Y) + this.offsetY
+        } else {
+            mapPosX := ((gameWindow.W / 2) - correctedPos.x + gameWindow.X) + this.offsetX
+            mapPosY := ((gameWindow.H / 2) - correctedPos.y + gameWindow.Y) + (mapScaledHeight / 4) - (5 * this.scale) + this.offsetY
+        }
         newMapPosX := this.mapImageList[levelNo].mapPosX - mapPosX
         newMapPosY := this.mapImageList[levelNo].mapPosY - mapPosY
         this.mapImageList[levelNo].mapPosX := mapPosX
         this.mapImageList[levelNo].mapPosY := mapPosY
         mapGuiHwnd := this.mapGuis[levelNo]
         WinMove, ahk_id %mapGuiHwnd%,,mapPosX, mapPosY
-        
+
         return { x: newMapPosX, y: newMapPosY }
+    }
+
+    ; exact closed form for a game-unit position inside the pre-projected (isometric) PNG.
+    ; Derived from makeIsometric.ts and proven pixel-exact — see PROJECTION_PATCH_CHECKPOINT.md.
+    ; All constants come from response headers; no per-level hardcoding.
+    isoPlayerPos(ByRef mapImage, ByRef playerGameX, ByRef playerGameY) {
+        S := mapImage.serverScale + 0.0
+        if (S <= 0)
+            S := settings["serverScale"] + 0.0   ; fallback for servers that don't emit the header
+        W := mapImage.mapwidth + 0.0
+        H := mapImage.mapheight + 0.0
+        P := mapImage.projectionoriginx + 0.0    ; top-down layout origin of game unit (0,0) (= padding)
+        cropX := mapImage.cropx + 0.0            ; tight-crop origin in pre-crop canvas space
+        cropY := mapImage.cropy + 0.0
+        MW := W * S + P
+        MH := H * S + P
+        HY := sqrt(MW*MW + MH*MH) + P            ; float, exactly as makeIsometric computes it
+        SQRT2 := sqrt(2)
+        bx := S * (playerGameX - playerGameY) / SQRT2 + HY/2 + (MH - MW)/(2*SQRT2) - cropX
+        by := S * (playerGameX + playerGameY) / (2*SQRT2) + (3*P - (MW+MH)/2)/(2*SQRT2) + HY/2 - cropY
+        return { x: bx, y: by }
     }
 }
 

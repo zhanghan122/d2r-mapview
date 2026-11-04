@@ -23,6 +23,19 @@ class MapImage {
     originalwidth := ""
     originalheight := ""
 
+    ; isometric projection metadata (only populated when requestedIsometric)
+    requestedIsometric := false
+    projection := ""
+    sourcewidth := ""
+    sourceheight := ""
+    projectedwidth := ""
+    projectedheight := ""
+    cropx := ""
+    cropy := ""
+    projectionoriginx := ""
+    projectionoriginy := ""
+    serverScale := ""
+
     __new(ByRef settings, ByRef mapSeed, ByRef difficulty, ByRef levelNo, pathStart := 0, pathEnd := 0) {
         this.mapSeed := mapSeed
         this.difficulty := difficulty
@@ -34,8 +47,9 @@ class MapImage {
         if (thickness < 1)
             thickness := 1
 
+        ; request the server-side pre-projected isometric image (the server ignores "rotate")
         imageUrl := baseUrl . "/v1/map/" . mapSeed . "/" . difficulty . "/" . levelNo . "/image?wallthickness=" . thickness
-        imageUrl := imageUrl . "&rotate=true&showTextLabels=false"
+        imageUrl := imageUrl . "&isometric=true&showTextLabels=false"
         imageUrl := imageUrl . "&padding=0"  ; . settings["padding"]
         imageUrl := imageUrl . "&noStitch=true"  ; . settings["padding"]
         imageUrl := imageUrl . "&edge=true"
@@ -49,6 +63,8 @@ class MapImage {
         }
         imageUrl := imageUrl . "&serverScale=" . settings["serverScale"]
 
+        ; we always request the pre-projected isometric image, so gate the iso draw path on this flag
+        this.requestedIsometric := true
         this.imageUrl := imageUrl
         this.downloadImage(imageUrl)
         WriteLog("Downloading image " imageUrl)
@@ -139,6 +155,17 @@ class MapImage {
                 case "prerotated": prerotated := convertToBool(field[2]), foundFields++
                 case "originalwidth": originalwidth := Trim(field[2]), foundFields++
                 case "originalheight": originalheight := Trim(field[2]), foundFields++
+                ; isometric projection metadata (emitted by patched d2-mapserver)
+                case "projection": projection := Trim(field[2]), foundFields++
+                case "sourcewidth": sourcewidth := Trim(field[2]), foundFields++
+                case "sourceheight": sourceheight := Trim(field[2]), foundFields++
+                case "projectedwidth": projectedwidth := Trim(field[2]), foundFields++
+                case "projectedheight": projectedheight := Trim(field[2]), foundFields++
+                case "cropx": cropx := Trim(field[2]), foundFields++
+                case "cropy": cropy := Trim(field[2]), foundFields++
+                case "projectionoriginx": projectionoriginx := Trim(field[2]), foundFields++
+                case "projectionoriginy": projectionoriginy := Trim(field[2]), foundFields++
+                case "serverscale": serverscale := Trim(field[2]), foundFields++
                 case "version": mapServerVersion := Trim(field[2])
             }
         }
@@ -157,7 +184,8 @@ class MapImage {
         if (serverisv10) {
             prerotated := true
         }
-        if (mapServerVersion < 14) {
+        ; Only warn when the server explicitly reports an outdated protocol version.
+        if (mapServerVersion != "" && mapServerVersion < 14) {
             if (!settings["alertedMapServerVersion"]) {
                 settings["alertedMapServerVersion"] := true
                 IniWrite, % 1, settings.ini, Settings, alertedMapServerVersion
@@ -181,6 +209,17 @@ class MapImage {
         this.prerotated := prerotated
         this.originalwidth := originalwidth
         this.originalheight := originalheight
+        ; isometric projection metadata (empty strings when the server doesn't emit them)
+        this.projection := projection
+        this.sourcewidth := sourcewidth
+        this.sourceheight := sourceheight
+        this.projectedwidth := projectedwidth
+        this.projectedheight := projectedheight
+        this.cropx := cropx
+        this.cropy := cropy
+        this.projectionoriginx := projectionoriginx
+        this.projectionoriginy := projectionoriginy
+        this.serverScale := serverscale
     }
 
 }

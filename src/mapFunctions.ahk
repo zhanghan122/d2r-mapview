@@ -5,12 +5,14 @@ checkAutomapVisibility(ByRef d2rprocess, ByRef gameMemoryData, ByRef settings, B
     , hideTown:= settings["hideTown"] 
     , levelNo:= gameMemoryData["levelNo"]
     , isMenuShown:= gameMemoryData["menuShown"]
+
     if ((levelNo == 1 or levelNo == 40 or levelNo == 75 or levelNo == 103 or levelNo == 109) and hideTown) {
         if (isMapShowing) {
             WriteLogDebug("Hiding town " levelNo " since hideTown is set to true")
         }
         hideMap(false, mapGuis, unitsGui)
-    } else if (gameMemoryData["menuShown"] == 1) { ; hide when menu shown
+    ; alwaysShowMap overrides stale menu flags in the current D2R UI layout.
+    } else if (gameMemoryData["menuShown"] == 1 and !alwaysShowMap) { ; hide when menu shown
         partyInfoLayer.hide()
         itemCounterLayer.hide()
         buffBarLayer.hide()
@@ -18,7 +20,7 @@ checkAutomapVisibility(ByRef d2rprocess, ByRef gameMemoryData, ByRef settings, B
             WriteLogDebug("Hiding since UI menu is shown")
         }
         hideMap(false, mapGuis, unitsGui, 1)
-    } else if (gameMemoryData["menuShown"] == "RIGHT") {
+    } else if (gameMemoryData["menuShown"] == "RIGHT" and !alwaysShowMap) {
         itemCounterLayer.hide()
         buffBarLayer.hide()
         if (isMapShowing) {
