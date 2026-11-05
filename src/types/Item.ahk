@@ -63,7 +63,7 @@ class GameItem {
     }
 
     isRune() {
-        if (this.txtFileNo >= 629 and this.txtFileNo <= 642) {
+        if (this.txtFileNo >= 610 and this.txtFileNo <= 642) {
             return true
         }
         return false

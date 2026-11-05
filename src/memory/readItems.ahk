@@ -17,6 +17,11 @@ ReadItems(ByRef d2rprocess, startingOffset, ByRef items) {
             ;itemLoc - 0 in inventory, 1 equipped, 2 in belt, 3 on ground, 4 cursor, 5 dropping, 6 socketed
             , itemLoc := NumGet(&itemStructData , 0x0C, "UInt")
             
+; Current D2R base item IDs are shifted by 15 relative to the legacy item table.
+            if (txtFileNo >= 603 and txtFileNo <= 672) {
+                txtFileNo -= 15
+            }
+
             if (itemType == 4) { ; item is 4
                 if (itemLoc == 3 or itemLoc == 5) { ; on ground, dropping
 
